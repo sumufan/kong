@@ -12,7 +12,10 @@ elif [ "$KONG_TEST_DATABASE" == "cassandra" ]; then
 fi
 
 if [ "$TEST_SUITE" == "integration" ]; then
-    eval "$TEST_CMD" spec/02-integration/
+    eval "$TEST_CMD" --exclude-tags=unpatched spec/02-integration/
+fi
+if [ "$TEST_SUITE" == "unpatched-integration" ]; then
+    eval "$TEST_CMD" --exclude-tags=patched spec/02-integration/
 fi
 if [ "$TEST_SUITE" == "plugins" ]; then
     eval "$TEST_CMD" spec/03-plugins/

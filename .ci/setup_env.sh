@@ -24,26 +24,37 @@ if [ ! "$(ls -A $OPENRESTY_DOWNLOAD)" ]; then
   popd
 fi
 
-if [ ! "$(ls -A $OPENRESTY_PATCHES_DOWNLOAD)" ]; then
-  pushd $DOWNLOAD_CACHE
-    curl -s -S -L https://github.com/Kong/openresty-patches/archive/master.tar.gz | tar xz
-  popd
+if [ "$TEST_SUITE" != "unpatched-integration" ]; then
+  if [ ! "$(ls -A $OPENRESTY_PATCHES_DOWNLOAD)" ]; then
+    pushd $DOWNLOAD_CACHE
+      curl -s -S -L https://github.com/Kong/openresty-patches/archive/master.tar.gz | tar xz
+    popd
+  fi
 fi
 
 if [ ! "$(ls -A $LUAROCKS_DOWNLOAD)" ]; then
   git clone -q https://github.com/keplerproject/luarocks.git $LUAROCKS_DOWNLOAD
 fi
 
-if [ ! "$(ls -A $CPAN_DOWNLOAD)" ]; then
-  wget -O $CPAN_DOWNLOAD/cpanm https://cpanmin.us
+if [[ "$TEST_SUITE" == "pdk" ]]; then
+  if [ ! "$(ls -A $CPAN_DOWNLOAD)" ]; then
+    wget -O $CPAN_DOWNLOAD/cpanm https://cpanmin.us
+  fi
 fi
 
 #--------
 # Install
 #--------
 OPENSSL_INSTALL=$INSTALL_CACHE/openssl-$OPENSSL
-OPENRESTY_INSTALL=$INSTALL_CACHE/openresty-$OPENRESTY
 LUAROCKS_INSTALL=$INSTALL_CACHE/luarocks-$LUAROCKS
+
+if [ "$TEST_SUITE" == "unpatched-integration" ]; then
+  OPENRESTY_INSTALL=$INSTALL_CACHE/openresty-$OPENRESTY-unpatched
+  WITH_STREAM_SSL_PREREAD_MODULE=""
+else
+  OPENRESTY_INSTALL=$INSTALL_CACHE/openresty-$OPENRESTY
+  WITH_STREAM_SSL_PREREAD_MODULE="--with-stream_ssl_preread_module"
+fi
 
 mkdir -p $OPENSSL_INSTALL $OPENRESTY_INSTALL $LUAROCKS_INSTALL
 
@@ -66,19 +77,21 @@ if [ ! "$(ls -A $OPENRESTY_INSTALL)" ]; then
     "--with-http_realip_module"
     "--with-http_stub_status_module"
     "--with-http_v2_module"
-    "--with-stream_ssl_preread_module"
+    $WITH_STREAM_SSL_PREREAD_MODULE
   )
 
   pushd $OPENRESTY_DOWNLOAD
-    if [ -d $OPENRESTY_PATCHES_DOWNLOAD/patches/$OPENRESTY ]; then
-      pushd bundle
-        for patch_file in $(ls -1 $OPENRESTY_PATCHES_DOWNLOAD/patches/$OPENRESTY/*.patch); do
-          echo "Applying OpenResty patch $patch_file"
-          patch -p1 < $patch_file 2> build.log || (cat build.log && exit 1)
-        done
-      popd
+    if [ "$TEST_SUITE" != "unpatched-integration" ]; then
+      if [ -d $OPENRESTY_PATCHES_DOWNLOAD/patches/$OPENRESTY ]; then
+        pushd bundle
+          for patch_file in $(ls -1 $OPENRESTY_PATCHES_DOWNLOAD/patches/$OPENRESTY/*.patch); do
+            echo "Applying OpenResty patch $patch_file"
+            patch -p1 < $patch_file 2> build.log || (cat build.log && exit 1)
+          done
+        popd
+      fi
     fi
-    echo "Installing OpenResty $OPENRESTY..."
+    echo "Installing OpenResty $OPENRESTY at $OPENRESTY_INSTALL..."
     eval ./configure ${OPENRESTY_OPTS[*]} &> build.log || (cat build.log && exit 1)
     make &> build.log || (cat build.log && exit 1)
     make install &> build.log || (cat build.log && exit 1)
